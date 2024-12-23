@@ -1,5 +1,7 @@
 __pycache__
 *.ui
+*.pth
+*.gz
 
-# test
 *.json
+*test*
