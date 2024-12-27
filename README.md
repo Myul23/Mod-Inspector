@@ -8,4 +8,5 @@
 
 - [json_comfortables.py](common/json_comfortables.py): read, append, find value, find all, extract template in jsons
   - find_all의 경우, 같은 dictionary에선 value searching이 이루어지지 않고 있다.
+- [json_matching.py](common/json_matching.py): change similarity calculation model, get json keys, get similarities with each keys, find optimal matching
 - [prior_mod_check.py](prior_mod_check.py): json read check, add prior mod list, check the mod's prior mod

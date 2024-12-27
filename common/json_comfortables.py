@@ -1,3 +1,6 @@
+from jstyleson import load, dump
+
+
 class Read_Json:
     def __init__(self, address: str = None, base: dict | list = None):
         if address is not None:
@@ -9,7 +12,6 @@ class Read_Json:
             self.base = base
 
     def read(self, address: str) -> dict:
-        from jstyleson import load
 
         with open(address, encoding="UTF-8-SIG") as jf:
             data = load(jf)
@@ -179,8 +181,6 @@ class Read_Json:
         if not save_flag:
             return templates
 
-        from json import dump
-
         with open(save_json_file, "w", encoding="UTF-8") as jf:
             dump(templates, jf, ensure_ascii=False, indent=2)
 
@@ -202,8 +202,6 @@ class Read_Json:
 
         if not save_flag:
             return dicts
-
-        from json import dump
 
         with open(save_json_file, "w", encoding="UTF-8") as jf:
             dump(dicts, jf, ensure_ascii=False, indent=2)
