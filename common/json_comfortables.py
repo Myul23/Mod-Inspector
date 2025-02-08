@@ -12,7 +12,6 @@ class Read_Json:
             self.base = base
 
     def read(self, address: str) -> dict:
-
         with open(address, encoding="UTF-8-SIG") as jf:
             data = load(jf)
         return data
@@ -21,7 +20,7 @@ class Read_Json:
         if dicts is None:
             return [target] if list_flag else target
 
-        if type(target) is list:
+        if isinstance(target, list):
             dicts.extend(target)
         else:
             dicts.append(target)

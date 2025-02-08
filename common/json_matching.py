@@ -1,22 +1,30 @@
 from os.path import exists
-from time import time, sleep
-from threading import Thread
+from time import time
+from threading import Thread, Lock
 
 from json import load, dumps, dump
 from sortedcontainers import SortedListWithKey
+from queue import Queue, Empty
 from copy import deepcopy
+
 
 from sentence_transformers import SentenceTransformer, util
 from gensim.models import KeyedVectors
 
 
 class JsonMatching:
-    def __init__(self, model_flag: bool = True, model_path: str = None, similarities_address: str = None, pathes_address: str = None):
+    def __init__(
+        self,
+        model_flag: bool = True,
+        model_path: str = None,
+        similarities_address: str = "similarities.json",
+        pathes_address: str = "optimal_pathes.json",
+    ):
         self.model_flag = model_flag
         self.__init_model(model_path=model_path)
-        self.similarities_address = "similarities.json" if similarities_address is None else similarities_address
+        self.similarities_address = similarities_address
         self.__init_similarities()
-        self.pathes_address = "optimal_pathes.json" if pathes_address is None else pathes_address
+        self.pathes_address = pathes_address
         self.__init_pathes()
 
     def __init_similarities(self) -> None:
@@ -117,7 +125,7 @@ class JsonMatching:
                 similarities.pop(base_key)
         return similarities
 
-    def __find_optimal_path(self, table: dict, num_threads: int = 8, delay_time: int = 1) -> dict:
+    def __init_defaults(self, table: dict) -> tuple:
         defaults = [0, {}]
         for start in table.keys():
             if len(table[start].keys()) > 1:
@@ -127,23 +135,33 @@ class JsonMatching:
                 defaults[1].update({start: end})
 
         default_starts = set(table.keys()) - set(defaults[1].keys())
-        default_ends = set([end for start in table.keys() for end in table[start].keys()]) - set(defaults[1].values())
+        default_ends = {end for start in table for end in table[start]} - set(defaults[1].values())
 
-        queue = [defaults]
+        queue = Queue()
+        queue.put(defaults)
         pathes = SortedListWithKey(key=lambda x: x[0])
         pathes.add(tuple(defaults))
 
-        def worker(thread_id: int) -> None:
-            while len(queue) > 0:
-                value, determined_path = queue.pop()
-                sleep(thread_id * delay_time)
+        return default_starts, default_ends, queue, pathes
+
+    def __find_optimal_path(self, table: dict, num_threads: int = 8) -> None | dict:
+        default_starts, default_ends, queue, pathes = self.__init_defaults(table)
+
+        lock = Lock()
+
+        def worker() -> None:
+            while True:
+                try:
+                    value, determined_path = queue.get(timeout=1)
+                except Empty:
+                    return
 
                 starts = tuple(default_starts - set(determined_path.keys()))
                 ends = tuple(default_ends - set(determined_path.values()))
                 if (starts, ends) in self.optimal_pathes.keys():
                     value += self.optimal_pathes[(starts, ends)][0]
                     determined_path.update(self.optimal_pathes[(starts, ends)][1])
-                    pathes.add((v, determined_path))
+                    pathes.add((value, determined_path))
                     continue
 
                 for start in starts:
@@ -156,30 +174,31 @@ class JsonMatching:
                         d_path.update({start: end})
 
                         pathes.add((v, d_path))
-                        queue.append((v, d_path))
+                        queue.put((v, d_path))
 
                         k = (tuple(d_path.keys()), tuple(d_path.values()))
-                        self.optimal_pathes[k] = (
-                            (max(v, self.optimal_pathes[k][0]), d_path) if k in self.optimal_pathes.keys() else (v, d_path)
-                        )
+                        with lock:
+                            self.optimal_pathes[k] = (
+                                (max(v, self.optimal_pathes[k][0]), d_path) if k in self.optimal_pathes.keys() else (v, d_path)
+                            )
 
         threads = []
-        for i in range(num_threads):
-            thread = Thread(target=worker, args=(i,))
+        for _ in range(num_threads):
+            thread = Thread(target=worker, args=())
             threads.append(thread)
             thread.start()
 
         for thread in threads:
             thread.join()
 
-        return pathes.pop()
+        return pathes.pop() if len(pathes) > 0 else None
 
     def matching(self, base: dict | list, target: dict | list, deep_flag: bool = False, similarity_flag: bool = False) -> dict | list:
-        base = self.get_keys(base, deep=deep_flag) if isinstance(base, dict) else base
-        target = self.get_keys(target, deep=deep_flag) if isinstance(target, dict) else target
+        base_keys = self.get_keys(base, deep=deep_flag) if isinstance(base, dict) else base
+        target_keys = self.get_keys(target, deep=deep_flag) if isinstance(target, dict) else target
 
         start = time()
-        similarities = self.get_similarity(base.keys(), target.keys())
+        similarities = self.get_similarity(base_keys.keys(), target_keys.keys())
         print(f"Similarity matrix calculation finish ({round(time() - start, 4)}s)")
 
         start = time()
@@ -202,5 +221,11 @@ if __name__ == "__main__":
 
     left = {"apple": 1, "banana": 2}
     right = {"kiwis": 7, "orange": 4, "apples": 3}
+
+    # from json_comfortables import Read_Json
+
+    # read_json = Read_Json()
+    # left = read_json.read("X://0. Stardew Valley Backup/0. sample/[CP] Motungi with Cafe v1.1.0/data/Shops/Blacksmith.json")
+    # right = read_json.read("X://0. Stardew Valley Backup/0. sample/[CP] Motungi with Cafe v1.1.0/data/Shops/Traveler.json")
 
     print(json_matching.matching(left, right, deep_flag=True))
